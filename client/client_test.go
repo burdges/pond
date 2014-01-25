@@ -2411,9 +2411,10 @@ func TestContactNameChange(t *testing.T) {
 
 	clickOnContact(client1, "client2")
 	const newName = "client2x"
+	client1.gui.events <- Click{name: "edit"}
 	client1.gui.events <- Update{name: "contactname", text: newName}
 	client1.gui.events <- Click{
-		name:    "changebutton",
+		name:    "edit",
 		entries: map[string]string{"contactname": newName},
 	}
 	client1.AdvanceTo(uiStateContactNameChanged)

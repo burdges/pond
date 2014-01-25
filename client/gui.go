@@ -1886,7 +1886,7 @@ func nameValuesLHS(entries []nvEntry) Grid {
 			GridE{1, 1, Label{
 				widgetBase: widgetBase{font: font},
 				text:       ent.value,
-				selectable: true,
+				selectable: false,
 			}},
 		})
 	}
@@ -2056,7 +2056,7 @@ func (c *guiClient) showContact(id uint64) interface{} {
 	c.contactsUI.SetIndicator(id, indicatorNone)
 
 	entries := []nvEntry{
-		{"NAME", ""},
+		{"NAME", contact.name},
 		{"SERVER", contact.theirServer},
 		{"PUBLIC IDENTITY", fmt.Sprintf("%x", contact.theirIdentityPublic[:])},
 		{"PUBLIC KEY", fmt.Sprintf("%x", contact.theirPub[:])},
@@ -2108,52 +2108,49 @@ func (c *guiClient) showContact(id uint64) interface{} {
 					text: "Delete",
 				}},
 			},
+			{{1,1, Label{} }},
+			{
+				{1, 1, Button{
+					widgetBase: widgetBase{
+						name: "edit",
+					},
+					text: "Edit",
+				}},
+			},
 		},
 	}
 
 	left := nameValuesLHS(entries)
-
-	// Switch the label next to "name" with an entry and a button.
-	left.rows[0][1].widget = HBox{
-		children: []Widget{
-			Entry{
-				widgetBase: widgetBase{
-					name: "contactname",
-				},
-				text:           contact.name,
-				updateOnChange: true,
-			},
-			Button{
-				widgetBase: widgetBase{
-					insensitive: true,
-					name:        "changebutton",
-				},
-				text: "Change name",
-			},
-		},
-	}
 
 	c.gui.Actions() <- SetChild{name: "right", child: rightPane("CONTACT", left, right, nil)}
 	c.gui.Actions() <- UIState{uiStateShowContact}
 	c.gui.Signal()
 
 	deleteArmed := false
+	editArmed := false
 
 	for {
 		event, wanted := c.nextEvent(0)
+		click, ok := event.(Click)
 		if wanted {
 			return event
 		}
 
-		if update, ok := event.(Update); ok && update.name == "contactname" {
+		if update, ok0 := event.(Update); ok0 && update.name == "contactname" {
 			candidate := update.text
 			_, alreadyExists := c.contactByName(candidate)
-			c.gui.Actions() <- Sensitive{name: "changebutton", sensitive: len(candidate) > 0 && !alreadyExists}
+			if len(candidate) > 0 && !alreadyExists {
+				c.gui.Actions() <- SetButtonText{name: "edit", text: "Save"}
+			} else {
+				c.gui.Actions() <- SetButtonText{name: "edit", text: "View"}				
+			}
+			// We could adjust sensitivity or something else perhaps too :
+			// c.gui.Actions() <- Sensitive{name: "abort", sensitive: }
+			c.gui.Actions() <- UIState{uiStateShowContact}
 			c.gui.Signal()
 			continue
 		}
 
-		click, ok := event.(Click)
 		if !ok {
 			continue
 		}
@@ -2175,44 +2172,62 @@ func (c *guiClient) showContact(id uint64) interface{} {
 				c.gui.Signal()
 			}
 
-		case "changebutton":
-			newName := click.entries["contactname"]
-			_, alreadyExists := c.contactByName(newName)
-			if len(newName) == 0 || alreadyExists {
-				continue
-			}
+		case "edit":
+			if editArmed {
+				editArmed = false
 
-			contact.name = newName
-			for _, msg := range c.inbox {
-				if msg.from == contact.id {
-					c.inboxUI.SetLine(msg.id, newName)
+				newName := click.entries["contactname"]
+				_, alreadyExists := c.contactByName(newName)
+				if len(newName) == 0 || alreadyExists {
+					c.log.Printf("Another contact already has the name %s, ignoring.\n", newName) 
+				} else {
+					contact.name = newName
+					c.save()
 				}
-			}
-			for _, msg := range c.outbox {
-				if msg.to == contact.id {
-					c.outboxUI.SetLine(msg.id, newName)
+
+				// update the sidebar after contact name change
+				c.contactsUI.SetLine(contact.id, contact.name)
+				for _, msg := range c.inbox {
+					if msg.from == contact.id {
+						c.inboxUI.SetLine(msg.id, contact.name)
+					}
 				}
-			}
-			for _, msg := range c.drafts {
-				if msg.to == contact.id {
-					c.draftsUI.SetLine(msg.id, newName)
+				for _, msg := range c.outbox {
+					if msg.to == contact.id {
+						c.outboxUI.SetLine(msg.id, contact.name)
+					}
 				}
-			}
-			for _, msg := range c.drafts {
-				if msg.to == contact.id {
-					c.draftsUI.SetLine(msg.id, newName)
+				for _, msg := range c.drafts {
+					if msg.to == contact.id {
+						c.draftsUI.SetLine(msg.id, contact.name)
+					}
 				}
+
+				left.rows[0][1].widget = Label{ 
+                    text:       contact.name,
+                    selectable: false,
+				}
+				c.gui.Actions() <- SetChild{name: "right", child: rightPane("CONTACT", left, right, nil)}
+				c.gui.Actions() <- SetButtonText{name: "edit", text: "Edit"}
+			} else {
+				editArmed = true
+				left.rows[0][1].widget = Entry{
+					// Can we copy the font from left.rows[0][1].widget.widgetBase.font somehow?
+					widgetBase:     widgetBase{name: "contactname"},
+					text:           contact.name,
+					updateOnChange: true,
+				}
+				c.gui.Actions() <- SetChild{name: "right", child: rightPane("CONTACT", left, right, nil)}
+				c.gui.Actions() <- SetButtonText{name: "edit", text: "View"}
 			}
-			c.contactsUI.SetLine(contact.id, newName)
-			c.gui.Actions() <- UIState{uiStateContactNameChanged}
+			c.gui.Actions() <- UIState{uiStateShowContact}
 			c.gui.Signal()
-
-			c.save()
 		}
 	}
 
 	panic("unreachable")
 }
+
 
 func (c *guiClient) newContactUI(contact *Contact) interface{} {
 	var name string
