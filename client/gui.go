@@ -333,9 +333,17 @@ func (c *guiClient) updateWindowTitle() {
 	}
 
 	if unreadCount == 0 {
-		c.gui.Actions() <- SetTitle{"Pond"}
+		if (c.dev) {
+			c.gui.Actions() <- SetTitle{"Pond - " + c.stateFilename}
+		} else {
+			c.gui.Actions() <- SetTitle{"Pond - " + c.stateFilename}
+		}
 	} else {
-		c.gui.Actions() <- SetTitle{fmt.Sprintf("Pond (%d)", unreadCount)}
+		if (c.dev) {
+			c.gui.Actions() <- SetTitle{fmt.Sprintf("Pond (%d) - " + c.stateFilename, unreadCount)}
+		} else {
+			c.gui.Actions() <- SetTitle{fmt.Sprintf("Pond (%d)", unreadCount)}
+		}
 	}
 	c.gui.Signal()
 }
