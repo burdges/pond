@@ -2487,7 +2487,12 @@ func TestIntroductions(t *testing.T) {
 	}
 	defer server.Close()
 
-	clientName := func(i int) string { return fmt.Sprintf("client%d",i) }
+	clientName := func(i int) string { return fmt.Sprintf("client %d",i) }
+
+	mp := panda.NewSimpleMeetingPlace()
+	newMeetingPlace := func() panda.MeetingPlace {
+		return mp
+	}
 
 	clients := []*TestClient{}
 	for i := 0; i < 4; i++ {
@@ -2495,6 +2500,7 @@ func TestIntroductions(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		client.newMeetingPlace = newMeetingPlace
 		clients = append(clients,client)
 	}
 	defer func() {
@@ -2505,12 +2511,12 @@ func TestIntroductions(t *testing.T) {
 
 	for i := 1; i < 4; i++ {
 		proceedToPairedWithNames(t, clients[0], clients[i],
-			"client0", clientName(i), server)
+			"client 0", clientName(i), server)
 	}
 
 	composeMessageStart(clients[0])
-	composeMessageAdd(clients[0],"client1","client2","client3")
-	composeMessageIntroduce(clients[0],"client1")
+	composeMessageAdd(clients[0],"client 1","client 2","client 3")
+	composeMessageIntroduce(clients[0],"client 1")
 	composeMessageSendMany(clients[0],"test message")
 
 	for i := 1; i < 4; i++ {
@@ -2519,13 +2525,12 @@ func TestIntroductions(t *testing.T) {
 
 	for _, client := range clients[1:] {
 		from, _ := fetchMessage(client)
-		if from != "client0" {
-			t.Fatalf("message from %s, expected client0", from)
+		if from != "client 0" {
+			t.Fatalf("message from %s, expected client 0", from)
 		}
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(4)
 	doGreet := func(client *TestClient,greet uint) {
 		client.gui.events <- Click{
 			name: client.inboxUI.entries[0].boxName,
@@ -2539,12 +2544,23 @@ func TestIntroductions(t *testing.T) {
 			wg.Done()
 		}()
 	}
+
+	wg.Add(4)
 	doGreet(clients[1],0)
+	// Why does this help?
+	clients[0].ReloadWithMeetingPlace(mp)
 	doGreet(clients[1],1)
 	doGreet(clients[2],0)
 	doGreet(clients[3],0)
+	clients[0].ReloadWithMeetingPlace(mp)
+	clients[0].ReloadWithMeetingPlace(mp)
+	clients[0].ReloadWithMeetingPlace(mp)
 	wg.Wait()
 
-	verifyGenerationSymetric(t,clients[1],clients[2],"client1","client2")
-	verifyGenerationSymetric(t,clients[1],clients[3],"client1","client3")
+	verifyGenerationSymetric(t,clients[1],clients[2],"client 1","client 2")
+	verifyGenerationSymetric(t,clients[1],clients[3],"client 1","client 3")
+	// verifyUnpaired(clients[2],clients[3])
 }
+
+
+
