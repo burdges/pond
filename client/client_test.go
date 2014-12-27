@@ -1840,6 +1840,13 @@ func TestSendToPendingContact(t *testing.T) {
 	}
 }
 
+func doDelete(client1 *TestClient, client2name string) {
+	clickOnContact(client1, client2name)
+	client1.gui.events <- Click{name: "delete"}
+	client1.gui.events <- Click{name: "delete"}
+	client1.AdvanceTo(uiStateRevocationComplete)
+}
+
 func TestDelete(t *testing.T) {
 	// Test that deleting contacts works.
 	if parallel {
@@ -1886,10 +1893,7 @@ func TestDelete(t *testing.T) {
 	startPANDAKeyExchange(t, client1, server, "client4", "secret")
 	client1.AdvanceTo(uiStateShowContact)
 
-	clickOnContact(client1, "client2")
-	client1.gui.events <- Click{name: "delete"}
-	client1.gui.events <- Click{name: "delete"}
-	client1.AdvanceTo(uiStateRevocationComplete)
+	doDelete(client1, "client2")
 
 	if len(client1.inbox) > 0 {
 		t.Errorf("still entries in inbox")
@@ -2543,8 +2547,11 @@ func TestIntroductions(t *testing.T) {
 		client.gui.events <- Click{
 			name: fmt.Sprintf("greet-%d", greet),
 		}
+		fmt.Printf("[%d]", greet)
 		go func() {
+			fmt.Printf("<%d>", greet)
 			client.AdvanceTo(uiStatePANDAComplete)
+			fmt.Printf("</%d>", greet)
 			wg.Done()
 		}()
 	}
@@ -2566,4 +2573,52 @@ func TestIntroductions(t *testing.T) {
 	verifyGenerationSymetric(t, clients[1], clients[3], "client 1", "client 3")
 
 	// verifyUnpaired(clients[2],clients[3])
+
+	// Test social graph records
+
+	fmt.Printf("woot\n")
+
+	doDelete(clients[1], "client 0")
+
+	// Test social graph records
+
+	composeMessageStart(clients[2])
+	composeMessageAdd(clients[2], "client 0", "client 1")
+	composeMessageIntroduce(clients[2], "client 0")
+	composeMessageSendMany(clients[2], "test message")
+
+	for i := 0; i < 2; i++ {
+		transmitMessage(clients[2], false)
+	}
+
+	fmt.Printf("2:\n")
+
+	for _, client := range clients[0:2] {
+		fmt.Printf("[%s -", client.name)
+		from, m := fetchMessage(client)
+		if m == nil {
+			fmt.Printf("\n")
+			t.Fatalf("%s didn't get any message", client.name)
+		}
+		fmt.Printf(" %s]", from)
+		if from != "client 2" {
+			t.Fatalf("%s message from %s, expected client 2", client.name, from)
+		}
+	}
+
+	fmt.Printf("3")
+
+	wg.Add(2)
+	doGreet(clients[0], 1)
+	// clients[0].ReloadWithMeetingPlace(mp)
+	doGreet(clients[1], 0)
+	wg.Wait()
+
+	fmt.Printf("4")
+
+	verifyGenerationSymetric(t, clients[0], clients[1], "client 0", "client 1")
+
+	fmt.Printf("5")
+
+	// Test social graph records
 }
